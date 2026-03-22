@@ -133,6 +133,6 @@ Siehe LICENSE Datei.
 
 ---
 
-**Version:** 1.0.0  
+**Version:** 1.1.1  
 **Kompatibilität:** Leantime 3.x  
-**Letzte Aktualisierung:** 2026-02-07
+**Letzte Aktualisierung:** 2026-03-22

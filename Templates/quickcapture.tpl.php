@@ -74,6 +74,9 @@ $isConfigured = $tpl->get('isConfigured') ?? false;
             </form>
         </div>
 
+        <!-- Validation Error Container -->
+        <div id="validation-error-container" style="margin-top: 16px; max-width: 600px;"></div>
+
         <!-- Preview Section -->
         <div class="headertitle" style="margin-top: 30px;">
             <span class="fa fa-eye"></span> <?php echo $tpl->__('aiassistant.quickcapture.preview.headline'); ?>
@@ -101,6 +104,69 @@ $isConfigured = $tpl->get('isConfigured') ?? false;
 
 <style>
 /* Leantime Native Design - Clean & Professional */
+
+/* Validation Error Messages */
+.validation-error {
+    background: #fef2f2;
+    border: 1px solid #ef4444;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #991b1b;
+}
+
+.validation-error .validation-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    background: #ef4444;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+}
+
+.validation-error .validation-message {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.validation-error .validation-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: #991b1b;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0;
+    line-height: 1;
+}
+
+.validation-error .validation-close:hover {
+    color: #dc2626;
+}
+
+.validation-error.error-shown {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .preview-card {
     background: white;
     border: 1px solid #e5e7eb;
@@ -400,13 +466,37 @@ function analyzeText() {
                 statusEl.innerHTML = '<span style="color: green;"><span class="fa fa-check"></span> Analysis complete!</span>';
                 document.getElementById('create-section').style.display = 'block';
             } else {
-                statusEl.innerHTML = '<span style="color: red;"><span class="fa fa-times"></span> ' + response.message + '</span>';
+                // Check for validation errors and show them properly
+                if (response.message) {
+                    const errorEl = document.createElement('div');
+                    errorEl.className = 'validation-error error-shown';
+                    errorEl.innerHTML = '<div class="validation-icon"><span class="fa fa-times"></span></div><div class="validation-message">' + escapeHtml(response.message) + '</div>';
+                    
+                    const container = document.getElementById('validation-error-container');
+                    if (container) {
+                        container.innerHTML = '';
+                        container.appendChild(errorEl);
+                    }
+                    
+                    statusEl.innerHTML = '';
+                }
+                
                 document.getElementById('preview-empty').style.display = 'block';
             }
         },
         error: function(xhr) {
             analyzeBtn.disabled = false;
-            statusEl.innerHTML = '<span style="color: red;"><span class="fa fa-times"></span> Connection failed</span>';
+            const errorEl = document.createElement('div');
+            errorEl.className = 'validation-error error-shown';
+            errorEl.innerHTML = '<div class="validation-icon"><span class="fa fa-times"></span></div><div class="validation-message">Connection failed</div>';
+            
+            const container = document.getElementById('validation-error-container');
+            if (container) {
+                container.innerHTML = '';
+                container.appendChild(errorEl);
+            }
+            
+            statusEl.innerHTML = '';
             document.getElementById('preview-empty').style.display = 'block';
         }
     });

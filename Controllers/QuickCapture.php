@@ -119,9 +119,10 @@ class QuickCapture extends Controller
                 ]);
             }
             
-            // Call AI to analyze text
+            // Call AI to analyze text (includes input validation)
             $aiResponse = $this->aiAssistant->analyzeText($text);
             
+            // Check for input validation errors from AIAssistant
             if (!$aiResponse) {
                 return new JsonResponse([
                     'success' => false,

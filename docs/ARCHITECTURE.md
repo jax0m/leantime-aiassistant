@@ -1,6 +1,6 @@
-# Leantime AI Assistant - Architecture Documentation
+# Leantime AI Assistant - Architecture Overview
 
-## Systemüberblick / System Overview
+## System Overview / Systemüberblick
 
 Leantime AI Assistant ist ein Plugin, das freitextbasierte Notizen automatisch in strukturierte Leantime-Tasks umwandelt. Das Plugin verwendet zwei AI-Provider (Ollama oder OpenAI) und integriert nahtlos in das Leantime-Ökosystem.
 
@@ -8,7 +8,7 @@ Leantime AI Assistant is a plugin that automatically converts free-text notes in
 
 ---
 
-## Architekturdiagramm / Architecture Diagram
+## Architecture Diagram / Architekturdiagramm
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -23,199 +23,182 @@ Leantime AI Assistant is a plugin that automatically converts free-text notes in
 │         │                 │         │  │  - OpenAI API   │  │  │
 │         └────────┬────────┘         │  │  - Model Mgmt   │  │  │
 │                  │                  │  │  - Connection   │  │  │
-│                  ▼                  │  └────────┬────────┘  │  │
-│  ┌──────────────────────────────────┘          │           │  │
-│  │         Repositories                 │           │  │
-│  ├─────────────────────────────────────┤           │  │
-│  │  - Settings (DB)                    │           │  │
-│  │  - Categories (DB)                  │           │  │
-│  └─────────────────────────────────────┘           │  │
-│                                                     │  │
-│  ┌─────────────────────────────────────────────┐   │  │
-│  │             Models                         │   │  │
-│  │  - TaskStructure (AI Output)               │   │  │
-│  │  - AIRequest                               │   │  │
-│  └─────────────────────────────────────────────┘   │  │
-│                                                     │  │
-│  ┌─────────────────────────────────────────────┐   │  │
-│  │         External Services (via DI)         │   │  │
-│  │  - Leantime\Tickets\Services\Tickets       │   │  │
-│  │  - Leantime\Tickets\Repositories\Tickets   │   │  │
-│  │  - Leantime\Core\Language                  │   │  │
-│  └─────────────────────────────────────────────┘   │  │
-└─────────────────────────────────────────────────────┘
+│                  ▼                  │  │  - System Prompt│  │  │
+│  ┌──────────────────────────────────┘          ▼           │  │
+│  │         Repositories                 │  ┌──────────────┐│  │
+│  ├─────────────────────────────────────┤  │ TaskGenerator││  │
+│  │  - Settings (DB)                    │  │ CategoryMgmt ││  │
+│  │  - Categories (DB)                  │  └──────────────┘│  │
+│  └─────────────────────────────────────┘                   │  │
+│                                                            │  │
+│  ┌─────────────────────────────────────────────┐          │  │
+│  │             Models                         │          │  │
+│  │  - TaskStructure (AI Output JSON)          │          │  │
+│  │  - AIRequest                               │          │  │
+│  └─────────────────────────────────────────────┘          │  │
+│                                                            │  │
+│  ┌─────────────────────────────────────────────┐          │  │
+│  │         External (Leantime Core)           │          │  │
+│  │  - Tickets Service/Repository              │          │  │
+│  │  - Language Service                        │          │  │
+│  └─────────────────────────────────────────────┘          │  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Komponenten / Components
+## Component Map / Komponentenübersicht
 
-### 1. Controllers / Controller
+### 1. Controllers (HTTP Entry Points)
 
-**Zweck:** Handhabt HTTP-Anfragen und rendert UI-Views  
-**Purpose:** Handles HTTP requests and renders UI views
+#### QuickCapture Controller
+| Method | Purpose | Description |
+|--------|---------|-------------|
+| `get()` | Display UI | Shows Quick Capture interface with note input and project selection |
+| `analyze()` | AJAX | Sends note to AI, returns preview JSON |
+| `createTasks()` | AJAX | Creates tasks from AI response |
 
-#### QuickCapture.php
-- **Route:** `/AIAssistant/quickCapture`
-- **Funktionen:**
-  - Zeigt Quick Capture Interface (Notizeingabe, Projektwahl)
-  - Sendet Notizen an AIAssistant Service
-  - Zeigt AI-Vorschau an
-  - Erstellt Tasks basierend auf AI-Ausgabe
-- **Functions:**
-  - Display Quick Capture interface (note input, project selection)
-  - Send notes to AIAssistant Service
-  - Display AI preview
-  - Create tasks based on AI output
+**Routes:**
+- `/AIAssistant/quickCapture` - Main UI
+- `/AIAssistant/quickCapture/analyze` - AJAX
+- `/AIAssistant/quickCapture/createTasks` - AJAX
 
-#### Settings.php
-- **Route:** `/AIAssistant/settings`
-- **Funktionen:**
-  - Lädt AI Provider Einstellungen aus DB
-  - Zeigt Ollama/OpenAI Konfiguration
-  - Lädt verfügbare Modelle (Ollama/OpenAI)
-  - Testet Verbindung
-  - Speichert Einstellungen
-- **Functions:**
-  - Load AI provider settings from DB
-  - Display Ollama/OpenAI configuration
-  - Load available models (Ollama/OpenAI)
-  - Test connection
-  - Save settings
+#### Settings Controller
+| Method | Purpose | Description |
+|--------|---------|-------------|
+| `get()` | Display UI | Shows AI settings page with provider config |
+| `post()` | AJAX/Save | Handles AJAX actions and saves settings |
+
+**Routes:**
+- `/AIAssistant/settings` - Settings UI
+- `/AIAssistant/settings/loadModels` - AJAX
+- `/AIAssistant/settings/loadOpenAIModels` - AJAX
+- `/AIAssistant/settings/testConnection` - AJAX
 
 ---
 
-### 2. Services / Services
+### 2. Services (Business Logic)
 
-#### AIAssistant.php (Haupt-Service / Main Service)
-**Verantwortlichkeiten:**
-- Kommunikation mit Ollama API
-- Kommunikation mit OpenAI API
-- Modell-Management
-- Verbindungstests
-- System-Prompt-Management
+#### AIAssistant Service
+**Purpose:** Communicates with AI providers and manages AI workflow
 
-**Responsibilities:**
-- Ollama API communication
-- OpenAI API communication
-- Model management
-- Connection tests
-- System prompt management
+| Method | Purpose | Description |
+|--------|---------|-------------|
+| `getOllamaModels()` | Get models | Fetches available Ollama models |
+| `getOpenAIModels()` | Get models | Fetches available OpenAI models |
+| `testOllamaConnection()` | Test | Tests Ollama API connectivity |
+| `testOpenAIConnection()` | Test | Tests OpenAI API connectivity |
+| `analyzeText()` | Main | Analyzes text with configured provider |
+| `getSystemPrompt()` | Internal | Gets/updates system prompt |
+| `getDefaultSystemPrompt()` | Internal | Returns default industry-specific prompt |
 
-**Wichtige Methoden / Important Methods:**
-- `getOllamaModels()` - HOLT verfügbare Ollama-Modelle
-- `getOpenAIModels()` - HOLT verfügbare OpenAI-Modelle
-- `testOllamaConnection()` - Testet Ollama-Verbindung
-- `testOpenAIConnection()` - Testet OpenAI-Verbindung
-- `analyzeText()` - ANALYSIERT Text mit konfiguriertem Provider
-- `getSystemPrompt()` - HOLT/ersetzt System-Prompt
+**Key Features:**
+- Dual provider support (Ollama/OpenAI)
+- System prompt with dynamic date replacement (`{{CURRENT_DATE}}`)
+- Industry-specific prompt for signage/glass/fastening industry
+- Comprehensive error logging
 
-#### TaskGenerator.php (Task-Generator)
-**Verantwortlichkeiten:**
-- Wandelt AI-JSON in Leantime-Tasks um
-- Erstellt Haupttasks
-- Erstellt Subtasks
-- Speichert Tags (inklusive Kategorie als Tag)
-- Handhabt Leantime quickAddTicket()-Bug
+#### TaskGenerator Service
+**Purpose:** Converts AI JSON to Leantime tickets
 
-**Responsibilities:**
-- Converts AI JSON to Leantime tasks
-- Creates main tasks
-- Creates subtasks
-- Saves tags (including category as tag)
-- Handles Leantime quickAddTicket() bug
+| Method | Purpose | Description |
+|--------|---------|-------------|
+| `createTaskFromAI()` | Main | Creates main task and subtasks |
+| `createMainTask()` | Internal | Creates main ticket via Leantime API |
+| `createSubtasks()` | Internal | Creates subtasks linked to main task |
+| `saveTags()` | Internal | Saves tags (includes category as first tag) |
+| `getTaskPreview()` | Internal | Generates preview without creation |
+| `getLastCreatedTicketId()` | Internal | Workaround for Leantime API bug |
 
-**Wichtige Methoden / Important Methods:**
-- `createTaskFromAI()` - ERSTELLT Task aus AI-Antwort
-- `createMainTask()` - Erstellt Haupttask
-- `createSubtasks()` - Erstellt Subtasks
-- `saveTags()` - Speichert Tags (BUGFIX: Kategorie als Tag)
-- `getTaskPreview()` - HOLT Vorschau ohne Task-Erstellung
-- `getLastCreatedTicketId()` - Workaround für Leantime-Bug
+**Key Features:**
+- Leantime API bug workaround (quickAddTicket returns bool instead of ID)
+- Category saved as first tag for filtering
+- Logging of all Task creation steps
 
-#### CategoryManager.php (Kategorien-Manager)
-**Verantwortlichkeiten:**
-- Lädt Kategorien aus DB (mit Icons/Colors)
-- Caching für Performance
-- Übersetzung von Kategorienamen
-- Keyword-basierte Kategorie-Erkennung
+#### CategoryManager Service
+**Purpose:** Manages task categories with icons and colors
 
-**Responsibilities:**
-- Loads categories from DB (with icons/colors)
-- Caching for performance
-- Translates category names
-- Keyword-based category detection
+| Method | Purpose | Description |
+|--------|---------|-------------|
+| `getAllCategories()` | Get | Loads all categories from DB |
+| `getCategory()` | Get | Gets single category details |
+| `detectCategory()` | Fallback | Keyword-based category detection |
 
-**Wichtige Methoden / Important Methods:**
-- `getAllCategories()` - HOLT alle Kategorien
-- `getCategory()` - HOLT Kategorie-Details
-- `getCategoryIcon()` - HOLT Kategorie-Icon (Emoji/FontAwesome)
-- `getCategoryColor()` - HOLT Kategorie-Farbe
-- `getCategoryName()` - HOLT Übersetzten Kategorienamen
-- `detectCategory()` - ERKENNT Kategorie aus Text (Fallback)
-- `isValidCategory()` - PRÜFT Kategorie-Gültigkeit
+**Key Features:**
+- Database-driven categories
+- Icon/Emoji support
+- Color coding
+- Translation support
 
 ---
 
-### 3. Repositories / Repositories
+### 3. Repositories (Data Access)
 
-**Zweck:** Datenbankschnittstellen (nicht für externe Services)  
-**Purpose:** Database interfaces (not for external services)
+#### Settings Repository
+- **Table:** `zp_aiassistant_settings`
+- **Methods:** `getAllSettings()`, `getSetting()`, `saveSettings()`, `installIfNeeded()`
 
-#### Settings.php
-- **SQL-Tabelle:** `zp_aiassistant_settings`
-- **Methoden:**
-  - `getAllSettings()` - HOLT alle Einstellungen
-  - `getSetting()` - HOLT einzelne Einstellung
-  - `saveSetting()` - SPEICHERT Einstellung
-  - `deleteSetting()` - LÖSCHT Einstellung
-
-#### Categories.php
-- **SQL-Tabelle:** `zp_aiassistant_categories`
-- **Methoden:**
-  - `getAllCategories()` - HOLT alle Kategorien
-  - `getCategory()` - HOLT einzelne Kategorie
-  - `saveCategory()` - SPEICHERT Kategorie
-  - `deleteCategory()` - LÖSCHT Kategorie
+#### Categories Repository
+- **Table:** `zp_aiassistant_categories`
+- **Methods:** `getAllCategories()`, `getCategory()`, `saveCategory()`, `deleteCategory()`
 
 ---
 
-### 4. Models / Models
+### 4. Models (Data Structures)
 
-#### TaskStructure.php
-**Zweck:** Repräsentiert die von AI extrahierten Task-Daten  
-**Purpose:** Represents task data extracted by AI
+#### TaskStructure
+| Property | Type | Description |
+|----------|------|-------------|
+| `title` | string | Task title |
+| `description` | string | Task description |
+| `category` | string | Category key (e.g., "kundenbestellung") |
+| `priority` | int | 1-5 (1=Critical) |
+| `deadline` | string|null | YYYY-MM-DD or null |
+| `subtasks` | array | Array of subtask texts |
+| `tags` | array | Array of tag strings |
+| `projectId` | int | Project ID |
 
-**Eigenschaften / Properties:**
-- `title` (string) - Task-Titel
-- `description` (string) - Task-Beschreibung
-- `category` (string) - Kategorie-Schlüssel (z.B. "kundenbestellung")
-- `priority` (int) - Priorität (1-5, 1=Critical)
-- `deadline` (string|null) - Deadline (YYYY-MM-DD oder null)
-- `subtasks` (array) - Array von Subtask-Texten
-- `tags` (array) - Array von Tags
-- `projectId` (int) - Projekt-ID
-
-**Wichtige Methoden / Important Methods:**
-- `fromAIResponse()` - KREATIERT TaskStructure aus AI-JSON
-- `mapPriority()` - KONVERTIERT Prioritäts-String zu Integer
-- `parseDeadline()` - PARST Deadline-String zu Datum
-- `toArray()` - KONVERTIERT zu Array für Task-Erstellung
-- `isValid()` - PRÜFT Task-Gültigkeit
-
-#### AIRequest.php
-**Zweck:** Hält AI-Anfrage-Daten  
-**Purpose:** Holds AI request data
+**Methods:**
+- `fromAIResponse()` - Parse AI JSON
+- `isValid()` - Validate structure
+- `toArray()` - Convert for task creation
 
 ---
 
-## Datenfluss / Data Flow
+### 5. Data Flow / Datenfluss
 
-### 1. Quick Capture Workflow / Quick Capture Workflow
-
+#### Quick Capture Flow
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  1. User öffnet Quick Capture UI                                   │
-│     User opens Quick Capture UI                                    │
-├────────────────────────────────────────────────────────────────────┤
-│  2. User gibt Notiz ein, wählt Projekt                    
+User Input → QuickCapture Controller → AIAssistant.analyzeText() 
+→ AI API Call → AI Response JSON → TaskGenerator.getTaskPreview() 
+→ User Review/Edit → QuickCapture.createTasks() 
+→ TaskGenerator.createTaskFromAI() → Leantime Tickets → Tasks Created
+```
+
+#### Settings Flow
+```
+User Settings → Settings Controller → Settings Repository (DB) 
+→ Test Connection → AIAssistant.getModels() → Model List → UI Display
+```
+
+---
+
+## Integration Points
+
+### Leantime Core Dependencies
+- `Leantime\Domain\Tickets\Services\Tickets` - Ticket creation
+- `Leantime\Domain\Tickets\Repositories\Tickets` - Ticket data access
+- `Leantime\Core\Language` - Translation support
+- `Leantime\Core\UI\Template` - UI rendering
+
+### Database Tables
+- `zp_aiassistant_settings` - AI configuration (provider, URLs, keys)
+- `zp_aiassistant_categories` - Task categories with icons/colors
+
+---
+
+## Version / Version
+
+- **Version:** 1.1.1
+- **Compatibility:** Leantime 3.x, PHP 8.1+
+- **Status:** Production Ready

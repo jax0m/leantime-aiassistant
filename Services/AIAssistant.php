@@ -7,7 +7,7 @@ use Leantime\Plugins\AIAssistant\Models\AIRequest;
 
 /**
  * AI Assistant Service
- * 
+ *
  * Handles communication with Ollama and OpenAI APIs
  */
 class AIAssistant
@@ -20,8 +20,81 @@ class AIAssistant
     }
 
     /**
+     * Sanitize response for logging (remove sensitive data)
+     *
+     * @param string $response
+     * @param int $maxLength
+     * @return string
+     */
+    private function sanitizeForLog(string $response, int $maxLength = 200): string
+    {
+        // Truncate to max length
+        if (strlen($response) > $maxLength) {
+            $response = substr($response, 0, $maxLength) . '...';
+        }
+
+        // Redact sensitive patterns
+        $response = str_replace([
+            'Bearer ',
+            'sk-',
+            'api_key',
+            'Authorization: Bearer',
+            'api-key',
+        ], '[REDACTED]', $response);
+
+        // Redact API keys in JSON responses
+        $response = preg_replace('/"key"\s*:\s*"[^"]+"/', '"key": "[REDACTED]"', $response);
+
+        // Remove OpenAI tokens
+        $response = preg_replace('/sk-[a-zA-Z0-9]{20,}/', 'sk-[REDACTED]', $response);
+
+        return $response;
+    }
+
+    /**
+     * Validate input text
+     *
+     * @param string $text
+     * @return array ['success' => bool, 'errors' => array]
+     */
+    private function validateInput(string $text): array
+    {
+        $errors = [];
+
+        // Minimum length check
+        if (strlen($text) < 10) {
+            $errors['length'] = 'Minimum 10 characters required';
+        }
+
+        // Maximum length check (5000 characters)
+        if (strlen($text) > 5000) {
+            $errors['length'] = 'Maximum 5000 characters allowed';
+        }
+
+        // Basic XSS prevention - no script tags or event handlers
+        if (preg_match('/<script|<\/script|javascript|on(load|error|click|mouseover)=/i', $text)) {
+            $errors['security'] = 'Potentially dangerous content detected. Please remove any HTML or JavaScript code.';
+        }
+
+        // Check for null bytes (injection attempt)
+        if (strpos($text, "\x00") !== false) {
+            $errors['security'] = 'Invalid characters detected. Please try again.';
+        }
+
+        // UTF-8 validation
+        if (!mb_check_encoding($text, 'UTF-8')) {
+            $errors['encoding'] = 'Invalid character encoding. Please ensure text is UTF-8.';
+        }
+
+        return [
+            'success' => empty($errors),
+            'errors' => $errors
+        ];
+    }
+
+    /**
      * Get available Ollama models
-     * 
+     *
      * @param string $url Ollama base URL
      * @return array List of available models
      */
@@ -29,37 +102,37 @@ class AIAssistant
     {
         try {
             $endpoint = rtrim($url, '/') . '/api/tags';
-            
+
             $ch = curl_init($endpoint);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json']
             ]);
-            
+
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            
+
             if ($httpCode !== 200) {
                 error_log("AIAssistant: Ollama API returned HTTP $httpCode");
                 return [];
             }
-            
+
             $data = json_decode($response, true);
-            
+
             if (!isset($data['models'])) {
                 return [];
             }
-            
+
             // Extract model names
             $models = [];
             foreach ($data['models'] as $model) {
                 $models[] = $model['name'] ?? $model['model'] ?? 'unknown';
             }
-            
+
             return $models;
-            
+
         } catch (\Exception $e) {
             error_log("AIAssistant: Error fetching Ollama models - " . $e->getMessage());
             return [];
@@ -68,7 +141,7 @@ class AIAssistant
 
     /**
      * Test Ollama connection
-     * 
+     *
      * @param string $url Ollama base URL
      * @param string $model Model name
      * @return bool True if connection successful
@@ -77,13 +150,13 @@ class AIAssistant
     {
         try {
             $endpoint = rtrim($url, '/') . '/api/generate';
-            
+
             $payload = json_encode([
                 'model' => $model,
                 'prompt' => 'Test',
                 'stream' => false
             ]);
-            
+
             $ch = curl_init($endpoint);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -92,13 +165,13 @@ class AIAssistant
                 CURLOPT_TIMEOUT => 60, // Increased for large models
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json']
             ]);
-            
+
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            
+
             return $httpCode === 200;
-            
+
         } catch (\Exception $e) {
             error_log("AIAssistant: Ollama connection test failed - " . $e->getMessage());
             return false;
@@ -107,7 +180,7 @@ class AIAssistant
 
     /**
      * Test OpenAI connection
-     * 
+     *
      * @param string $apiKey OpenAI API key
      * @param string $baseUrl OpenAI base URL
      * @return bool True if connection successful
@@ -116,7 +189,7 @@ class AIAssistant
     {
         try {
             $endpoint = rtrim($baseUrl, '/') . '/models';
-            
+
             $ch = curl_init($endpoint);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -126,13 +199,13 @@ class AIAssistant
                     'Content-Type: application/json'
                 ]
             ]);
-            
+
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            
+
             return $httpCode === 200;
-            
+
         } catch (\Exception $e) {
             error_log("AIAssistant: OpenAI connection test failed - " . $e->getMessage());
             return false;
@@ -141,17 +214,25 @@ class AIAssistant
 
     /**
      * Analyze text using configured AI provider
-     * 
+     *
      * @param string $text Text to analyze
      * @return string|null JSON response from AI or null on failure
      */
     public function analyzeText(string $text): ?string
     {
+        // Validate input first
+        $validation = $this->validateInput($text);
+
+        if (!$validation['success']) {
+            error_log("AIAssistant: Input validation failed - " . json_encode($validation['errors']));
+            return null;
+        }
+
         $settings = $this->settingsRepo->getAllSettings();
         $provider = $settings['provider'] ?? 'ollama';
-        
+
         $systemPrompt = $this->getSystemPrompt();
-        
+
         if ($provider === 'ollama') {
             return $this->analyzeWithOllama($text, $systemPrompt, $settings);
         } else {
@@ -161,7 +242,7 @@ class AIAssistant
 
     /**
      * Analyze text with Ollama
-     * 
+     *
      * @param string $text
      * @param string $systemPrompt
      * @param array $settings
@@ -173,23 +254,23 @@ class AIAssistant
             $url = $settings['ollama_url'] ?? 'http://192.168.200.40:11434';
             $model = $settings['ollama_model'] ?? '';
             $timeout = (int)($settings['timeout'] ?? 30);
-            
+
             if (empty($model)) {
                 error_log("AIAssistant: No Ollama model configured");
                 return null;
             }
-            
+
             $endpoint = rtrim($url, '/') . '/api/generate';
-            
+
             $prompt = $systemPrompt . "\n\nNotiz:\n" . $text . "\n\nAntwort als JSON:";
-            
+
             $payload = json_encode([
                 'model' => $model,
                 'prompt' => $prompt,
                 'stream' => false,
                 'format' => 'json'
             ]);
-            
+
             $ch = curl_init($endpoint);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -198,19 +279,19 @@ class AIAssistant
                 CURLOPT_TIMEOUT => $timeout,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json']
             ]);
-            
+
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            
+
             if ($httpCode !== 200) {
                 error_log("AIAssistant: Ollama API returned HTTP $httpCode");
                 return null;
             }
-            
+
             $data = json_decode($response, true);
             return $data['response'] ?? null;
-            
+
         } catch (\Exception $e) {
             error_log("AIAssistant: Ollama analysis failed - " . $e->getMessage());
             return null;
@@ -219,7 +300,7 @@ class AIAssistant
 
     /**
      * Analyze text with OpenAI
-     * 
+     *
      * @param string $text
      * @param string $systemPrompt
      * @param array $settings
@@ -232,14 +313,14 @@ class AIAssistant
             $baseUrl = $settings['openai_base_url'] ?? 'https://api.openai.com/v1';
             $model = $settings['openai_model'] ?? 'gpt-4';
             $timeout = (int)($settings['timeout'] ?? 30);
-            
+
             if (empty($apiKey)) {
                 error_log("AIAssistant: No OpenAI API key configured");
                 return null;
             }
-            
+
             $endpoint = rtrim($baseUrl, '/') . '/chat/completions';
-            
+
             $payload = json_encode([
                 'model' => $model,
                 'messages' => [
@@ -248,7 +329,7 @@ class AIAssistant
                 ],
                 'response_format' => ['type' => 'json_object']
             ]);
-            
+
             $ch = curl_init($endpoint);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -260,19 +341,20 @@ class AIAssistant
                     'Content-Type: application/json'
                 ]
             ]);
-            
+
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            
+
             if ($httpCode !== 200) {
-                error_log("AIAssistant: OpenAI API returned HTTP $httpCode - $response");
+                $safeResponse = $this->sanitizeForLog($response, 200);
+                error_log("AIAssistant: HTTP $httpCode - Response: $safeResponse");
                 return null;
             }
-            
+
             $data = json_decode($response, true);
             return $data['choices'][0]['message']['content'] ?? null;
-            
+
         } catch (\Exception $e) {
             error_log("AIAssistant: OpenAI analysis failed - " . $e->getMessage());
             return null;
@@ -281,30 +363,30 @@ class AIAssistant
 
     /**
      * Get system prompt for AI (from settings or default)
-     * 
+     *
      * @return string
      */
     private function getSystemPrompt(): string
     {
         // Get custom prompt from settings or use default
         $customPrompt = $this->settingsRepo->getSetting('system_prompt');
-        
+
         if (!empty($customPrompt)) {
             $prompt = $customPrompt;
         } else {
             $prompt = $this->getDefaultSystemPrompt();
         }
-        
+
         // Replace {{CURRENT_DATE}} placeholder with actual date
         $currentDate = date('Y-m-d');
         $prompt = str_replace('{{CURRENT_DATE}}', $currentDate, $prompt);
-        
+
         return $prompt;
     }
-    
+
     /**
      * Get default system prompt
-     * 
+     *
      * @return string
      */
     public function getDefaultSystemPrompt(): string
@@ -372,7 +454,9 @@ PROMPT;
     {
         try {
             $endpoint = rtrim($baseUrl, '/') . '/models';
-            
+
+            error_log("AIAssistant: Connecting to endpoint: $endpoint");
+
             $ch = curl_init($endpoint);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
@@ -380,39 +464,64 @@ PROMPT;
                 CURLOPT_HTTPHEADER => [
                     'Authorization: Bearer ' . $apiKey,
                     'Content-Type: application/json'
-                ]
+                ],
+                CURLOPT_FOLLOWLOCATION => true
             ]);
-            
+
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            
+            $curlError = curl_error($ch);
+
+            error_log("AIAssistant: HTTP Code: $httpCode, Response length: " . strlen($response) . ", Curl error: " . ($curlError ?: 'none'));
+
             if ($httpCode !== 200) {
-                error_log("AIAssistant: OpenAI API returned HTTP $httpCode");
+                $safeResponse = $this->sanitizeForLog($response, 200);
+                error_log("AIAssistant: OpenAI API returned HTTP $httpCode - Response: $safeResponse");
+                curl_close($ch);
                 return [];
             }
-            
+
+            if (empty($response)) {
+                error_log("AIAssistant: Response is empty. Curl error: " . ($curlError ?: 'none'));
+                curl_close($ch);
+                return [];
+            }
+
+            $safeResponse = $this->sanitizeForLog($response, 500);
+            error_log("AIAssistant: Full response: $safeResponse");
+
             $data = json_decode($response, true);
-            
-            if (!isset($data['data'])) {
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                error_log("AIAssistant: JSON decode error: " . json_last_error_msg());
+                curl_close($ch);
                 return [];
             }
-            
-            // Extract and filter model IDs (only GPT models)
+
+            if (!isset($data['data'])) {
+                error_log("AIAssistant: Response does not contain 'data' key. Response: " . $response);
+                curl_close($ch);
+                return [];
+            }
+
+            curl_close($ch);
+
+            // Extract model IDs
             $models = [];
             foreach ($data['data'] as $model) {
                 $id = $model['id'] ?? '';
-                // Filter for GPT models only
-                if (stripos($id, 'gpt') !== false) {
+                if (!empty($id)) {
                     $models[] = $id;
                 }
             }
-            
+
             // Sort alphabetically
             sort($models);
-            
+
+            error_log("AIAssistant: Fetched " . count($models) . " models: " . json_encode($models));
+
             return $models;
-            
+
         } catch (\Exception $e) {
             error_log("AIAssistant: Failed to fetch OpenAI models - " . $e->getMessage());
             return [];

@@ -150,14 +150,11 @@ For large models, increase timeout in settings (default: 60s, recommended for 70
 
 ## 📚 Documentation
 
-**Comprehensive bilingual documentation is available in the [docs/](docs/) folder:**
+**Documentation is available in the [docs/](docs/) folder:**
 
-- 🏗️ [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) - System architecture, components, data flow (DE/EN)
-- 📖 [**API.md**](docs/API.md) - API endpoints, examples, error codes (DE/EN)
-- 📘 [**USER_GUIDE.md**](docs/USER_GUIDE.md) - Complete user manual (DE/EN)
-- 💻 [**DEVELOPER_GUIDE.md**](docs/DEVELOPER_GUIDE.md) - For developers extending the plugin (DE/EN)
-- 📋 [**CHANGELOG.md**](docs/CHANGELOG.md) - Release notes and version history (DE/EN)
-- ⚡ [**QUICK_REFERENCE.md**](docs/QUICK_REFERENCE.md) - Common tasks and troubleshooting (DE/EN)
+- 📖 [**USER_GUIDE.md**](docs/USER_GUIDE.md) - Complete user manual with troubleshooting (DE/EN)
+- ⚡ [**QUICK_REFERENCE.md**](docs/QUICK_REFERENCE.md) - Common tasks and quick reference (DE/EN)
+- 🏗️ [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) - System architecture overview (DE/EN)
 
 **Additional docs:**
 - [INSTALLATION.md](INSTALLATION.md) - Installation guide (German)
@@ -182,7 +179,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Version:** 1.0.0  
+**Version:** 1.1.1  
 **Compatibility:** Leantime 3.x  
 **Status:** ✅ Production Ready
 
