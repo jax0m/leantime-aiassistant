@@ -148,10 +148,21 @@ services:
 
 For large models, increase timeout in settings (default: 60s, recommended for 70B+ models: 90-120s).
 
-## 📖 Documentation
+## 📚 Documentation
 
-- [Installation Guide](INSTALLATION.md) - Detailed installation instructions (German)
-- [Integration Details](LEANTIME_INTEGRATION.md) - Technical documentation
+**Comprehensive bilingual documentation is available in the [docs/](docs/) folder:**
+
+- 🏗️ [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) - System architecture, components, data flow (DE/EN)
+- 📖 [**API.md**](docs/API.md) - API endpoints, examples, error codes (DE/EN)
+- 📘 [**USER_GUIDE.md**](docs/USER_GUIDE.md) - Complete user manual (DE/EN)
+- 💻 [**DEVELOPER_GUIDE.md**](docs/DEVELOPER_GUIDE.md) - For developers extending the plugin (DE/EN)
+- 📋 [**CHANGELOG.md**](docs/CHANGELOG.md) - Release notes and version history (DE/EN)
+- ⚡ [**QUICK_REFERENCE.md**](docs/QUICK_REFERENCE.md) - Common tasks and troubleshooting (DE/EN)
+
+**Additional docs:**
+- [INSTALLATION.md](INSTALLATION.md) - Installation guide (German)
+- [LEANTIME_INTEGRATION.md](LEANTIME_INTEGRATION.md) - Technical integration details
+
 
 ## 📝 License
 
